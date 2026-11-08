@@ -1,0 +1,9 @@
+{
+  "name": "Mathe-Speed-Trainer",
+  "short_name": "MatheTrainer",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f3f4f6",
+  "theme_color": "#4f46e5",
+  "icons": []
+}

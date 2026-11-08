@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mathe-Speed-Trainer</title>
+    <!-- PWA Meta-Tags & Manifest -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#4f46e5">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Mathe-Trainer">
+
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --primary-hover: #4338ca;
+            --bg: #f3f4f6;
+            --card-bg: #ffffff;
+            --text: #1f2937;
+            --success: #10b981;
+            --error: #ef4444;
+        }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .container {
+            background: var(--card-bg);
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            width: 100%;
+            max-width: 450px;
+            text-align: center;
+        }
+        h1 { margin-top: 0; color: var(--primary); font-size: 1.8rem; }
+        .hidden { display: none !important; }
+        input, button {
+            font-size: 1.2rem;
+            padding: 12px;
+            margin: 10px 0;
+            width: 100%;
+            box-sizing: border-box;
+            border-radius: 8px;
+            border: 1px solid #d1d5db;
+        }
+        button {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        button:hover { background-color: var(--primary-hover); }
+        .profile-btn {
+            background-color: #e5e7eb;
+            color: var(--text);
+            text-align: left;
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .profile-btn:hover { background-color: #d1d5db; }
+        .stats {
+            display: flex;
+            justify-content: space-between;
+            font-weight: bold;
+            margin-bottom: 20px;
+            color: #4b5563;
+        }
+        .task-box {
+            font-size: 2.5rem;
+            margin: 20px 0;
+            font-weight: bold;
+            color: var(--primary);
+        }
+        .feedback {
+            font-size: 1.1rem;
+            font-weight: bold;
+            min-height: 30px;
+            margin: 10px 0;
+        }
+        .success { color: var(--success); }
+        .error { color: var(--error); }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <!-- PROFIL-AUSWAHL -->
+    <div id="screen-profiles">
+        <h1>Mathe-Speed-Trainer</h1>
+        <p>Wer spielt heute?</p>
+        <div id="profile-list"></div>
+        <input type="text" id="new-profile-name" placeholder="Name des Kindes...">
+        <button onclick="addProfile()">Profil hinzufügen</button>
+    </div>
+
+    <!-- HAUPTMENU -->
+    <div id="screen-menu" class="hidden">
+        <h1>Hallo, <span id="current-profile-name"></span>!</h1>
+        <p>Wähle eine Rechenart:</p>
+        <button onclick="startGame('addition')">➕ Addition (Stufe für Stufe)</button>
+        <button onclick="startGame('subtraction')">➖ Subtraktion</button>
+        <button onclick="startGame('multiplication')">✖️ Multiplikation</button>
+        <button onclick="startGame('division')">➗ Division</button>
+        <button style="background-color: #6b7280;" onclick="showProfiles()">Profil wechseln</button>
+    </div>
+
+    <!-- SPIEL-BILDSCHIRM -->
+    <div id="screen-game" class="hidden">
+        <div class="stats">
+            <span>Stufe: <span id="lbl-level">1</span></span>
+            <span>Punkte: <span id="lbl-score">0</span></span>
+        </div>
+        <div class="task-box" id="lbl-task">2 + 3</div>
+        <input type="number" id="answer-input" placeholder="Antwort..." autocomplete="off">
+        <button onclick="checkAnswer()">Absenden</button>
+        <div class="feedback" id="lbl-feedback"></div>
+        <button style="background-color: #ef4444;" onclick="endGame()">Aufgeben / Zurück</button>
+    </div>
+
+    <!-- ERGEBNIS-BILDSCHIRM -->
+    <div id="screen-result" class="hidden">
+        <h1>Runde beendet! 🎉</h1>
+        <p>Erreichte Punkte: <span id="res-score">0</span></p>
+        <p>Highscore für dieses Profil: <span id="res-highscore">0</span></p>
+        <button onclick="showMenu()">Zum Menü</button>
+    </div>
+</div>
+
+<script>
+    // Service Worker Registrierung für PWA
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./sw.js')
+                .then(reg => console.log('Service Worker registriert:', reg.scope))
+                .catch(err => console.log('Service Worker Fehler:', err));
+        });
+    }
+
+    let profiles = JSON.parse(localStorage.getItem('math_profiles')) || [];
+    let activeProfile = null;
+    let currentOp = '';
+    let level = 1;
+    let score = 0;
+    let currentTask = {};
+    let startTime = 0;
+
+    function saveProfiles() {
+        localStorage.setItem('math_profiles', JSON.stringify(profiles));
+    }
+
+    function renderProfiles() {
+        const list = document.getElementById('profile-list');
+        list.innerHTML = '';
+        if (profiles.length === 0) {
+            list.innerHTML = '<p style="color: #6b7280;">Noch keine Profile vorhanden.</p>';
+            return;
+        }
+        profiles.forEach((p, index) => {
+            let btn = document.createElement('button');
+            btn.className = 'profile-btn';
+            btn.innerHTML = `<span>👤 ${p.name}</span> <span>Highscore: ${p.highscore || 0}</span>`;
+            btn.onclick = () => selectProfile(index);
+            list.appendChild(btn);
+        });
+    }
+
+    function addProfile() {
+        const nameInput = document.getElementById('new-profile-name');
+        const name = nameInput.value.trim();
+        if (!name) return;
+        profiles.push({ name: name, highscore: 0 });
+        saveProfiles();
+        nameInput.value = '';
+        renderProfiles();
+    }
+
+    function selectProfile(index) {
+        activeProfile = profiles[index];
+        document.getElementById('current-profile-name').innerText = activeProfile.name;
+        showScreen('screen-menu');
+    }
+
+    function showProfiles() {
+        renderProfiles();
+        showScreen('screen-profiles');
+    }
+
+    function showScreen(screenId) {
+        ['screen-profiles', 'screen-menu', 'screen-game', 'screen-result'].forEach(id => {
+            document.getElementById(id).classList.add('hidden');
+        });
+        document.getElementById(screenId).classList.remove('hidden');
+    }
+
+    function showMenu() {
+        showScreen('screen-menu');
+    }
+
+    function startGame(op) {
+        currentOp = op;
+        level = 1;
+        score = 0;
+        document.getElementById('lbl-score').innerText = score;
+        showScreen('screen-game');
+        nextTask();
+    }
+
+    function generateTask() {
+        let a, b, result;
+        
+        if (currentOp === 'addition') {
+            if (level === 1) { a = rand(1, 5); b = rand(1, 5); }
+            else if (level === 2) { a = rand(1, 9); b = rand(1, 9); }
+            else if (level === 3) { a = rand(1, 9); b = rand(10, 15); }
+            else { a = rand(10, 30); b = rand(10, 30); }
+            result = a + b;
+            return { text: `${a} + ${b}`, answer: result };
+        } 
+        else if (currentOp === 'subtraction') {
+            if (level === 1) { a = rand(2, 6); b = rand(1, a); }
+            else if (level === 2) { a = rand(5, 15); b = rand(1, a); }
+            else { a = rand(10, 30); b = rand(1, a); }
+            result = a - b;
+            return { text: `${a} - ${b}`, answer: result };
+        }
+        else if (currentOp === 'multiplication') {
+            if (level === 1) { a = rand(1, 5); b = rand(1, 5); }
+            else if (level === 2) { a = rand(1, 9); b = rand(1, 9); }
+            else { a = rand(2, 10); b = rand(2, 10); }
+            result = a * b;
+            return { text: `${a} × ${b}`, answer: result };
+        }
+        else if (currentOp === 'division') {
+            if (level === 1) { b = rand(1, 5); result = rand(1, 5); }
+            else if (level === 2) { b = rand(1, 9); result = rand(1, 9); }
+            else { b = rand(2, 10); result = rand(2, 10); }
+            a = b * result;
+            return { text: `${a} ÷ ${b}`, answer: result };
+        }
+    }
+
+    function rand(min, max) {
+        return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+
+    function nextTask() {
+        currentTask = generateTask();
+        document.getElementById('lbl-task').innerText = currentTask.text;
+        document.getElementById('lbl-level').innerText = level;
+        const input = document.getElementById('answer-input');
+        input.value = '';
+        input.focus();
+        startTime = Date.now();
+    }
+
+    document.getElementById('answer-input').addEventListener('keydown', function(event) {
+        if (event.key === 'Enter') {
+            checkAnswer();
+        }
+    });
+
+    function checkAnswer() {
+        const input = document.getElementById('answer-input');
+        const userVal = parseInt(input.value);
+        const feedback = document.getElementById('lbl-feedback');
+
+        if (isNaN(userVal)) return;
+
+        const duration = (Date.now() - startTime) / 1000;
+
+        if (userVal === currentTask.answer) {
+            let points = Math.max(5, Math.round(25 - (duration * 5)));
+            score += points;
+            document.getElementById('lbl-score').innerText = score;
+
+            feedback.className = 'feedback success';
+            feedback.innerText = `Richtig! (+${points} Pkt in ${duration.toFixed(1)}s)`;
+
+            if (score > level * 75) {
+                level++;
+            }
+
+            setTimeout(nextTask, 600);
+        } else {
+            feedback.className = 'feedback error';
+            feedback.innerText = `Falsch! Richtig wäre ${currentTask.answer} gewesen.`;
+            setTimeout(nextTask, 1000);
+        }
+    }
+
+    function endGame() {
+        if (score > (activeProfile.highscore || 0)) {
+            activeProfile.highscore = score;
+            saveProfiles();
+        }
+        document.getElementById('res-score').innerText = score;
+        document.getElementById('res-highscore').innerText = activeProfile.highscore;
+        showScreen('screen-result');
+    }
+
+    renderProfiles();
+</script>
+
+</body>
+</html>
