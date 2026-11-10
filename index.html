@@ -43,7 +43,7 @@
         }
         h1 { margin-top: 0; color: var(--primary); font-size: 1.8rem; }
         .hidden { display: none !important; }
-        input, button {
+        input, button, select {
             font-size: 1.2rem;
             padding: 12px;
             margin: 10px 0;
@@ -75,8 +75,26 @@
             display: flex;
             justify-content: space-between;
             font-weight: bold;
-            margin-bottom: 20px;
+            margin-bottom: 10px;
             color: #4b5563;
+        }
+        /* Timer Bar Styles */
+        .timer-container {
+            width: 100%;
+            height: 10px;
+            background-color: #e5e7eb;
+            border-radius: 5px;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+        .timer-bar {
+            height: 100%;
+            width: 100%;
+            background-color: var(--primary);
+            transition: width 0.1s linear, background-color 0.3s;
+        }
+        .timer-bar.danger {
+            background-color: var(--error);
         }
         .task-box {
             font-size: 2.5rem;
@@ -102,7 +120,10 @@
         <h1>Mathe-Speed-Trainer</h1>
         <p>Wer spielt heute?</p>
         <div id="profile-list"></div>
-        <input type="text" id="new-profile-name" placeholder="Name des Kindes...">
+        
+        <input type="text" id="new-profile-name" placeholder="Name des Kindes..." autocomplete="off">
+        <input type="number" id="new-profile-year" placeholder="Geburtsjahr (z.B. 2017)..." autocomplete="off">
+        
         <button onclick="addProfile()">Profil hinzufügen</button>
     </div>
 
@@ -122,6 +143,10 @@
         <div class="stats">
             <span>Stufe: <span id="lbl-level">1</span></span>
             <span>Punkte: <span id="lbl-score">0</span></span>
+        </div>
+        <!-- Visueller Countdown-Balken -->
+        <div class="timer-container">
+            <div id="timer-bar" class="timer-bar"></div>
         </div>
         <div class="task-box" id="lbl-task">2 + 3</div>
         <input type="number" id="answer-input" placeholder="Antwort..." autocomplete="off">
@@ -143,9 +168,7 @@
     // Service Worker Registrierung für PWA
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-            navigator.serviceWorker.register('./sw.js')
-                .then(reg => console.log('Service Worker registriert:', reg.scope))
-                .catch(err => console.log('Service Worker Fehler:', err));
+            navigator.serviceWorker.register('./sw.js').catch(err => console.log('SW Fehler:', err));
         });
     }
 
@@ -155,6 +178,11 @@
     let level = 1;
     let score = 0;
     let currentTask = {};
+    
+    // Timer Variablen
+    let timerInterval = null;
+    let maxTimePerTask = 12;
+    let timeLeft = 12;
     let startTime = 0;
 
     function saveProfiles() {
@@ -171,7 +199,12 @@
         profiles.forEach((p, index) => {
             let btn = document.createElement('button');
             btn.className = 'profile-btn';
-            btn.innerHTML = `<span>👤 ${p.name}</span> <span>Highscore: ${p.highscore || 0}</span>`;
+            
+            // Alter aus Geburtsjahr berechnen für die Anzeige
+            const currentYear = new Date().getFullYear();
+            let calculatedAge = currentYear - p.birthYear;
+            
+            btn.innerHTML = `👤 <b>${p.name}</b> (${calculatedAge} J.) <span>Highscore: ${p.highscore || 0}</span>`;
             btn.onclick = () => selectProfile(index);
             list.appendChild(btn);
         });
@@ -179,17 +212,38 @@
 
     function addProfile() {
         const nameInput = document.getElementById('new-profile-name');
+        const yearInput = document.getElementById('new-profile-year');
+        
         const name = nameInput.value.trim();
-        if (!name) return;
-        profiles.push({ name: name, highscore: 0 });
+        const birthYear = parseInt(yearInput.value);
+
+        if (!name || isNaN(birthYear)) return;
+
+        profiles.push({ name: name, birthYear: birthYear, highscore: 0 });
         saveProfiles();
+        
         nameInput.value = '';
+        yearInput.value = '';
         renderProfiles();
     }
 
     function selectProfile(index) {
         activeProfile = profiles[index];
         document.getElementById('current-profile-name').innerText = activeProfile.name;
+        
+        // Alter anhand des aktuellen Jahres berechnen
+        const currentYear = new Date().getFullYear();
+        let age = currentYear - activeProfile.birthYear;
+        
+        // Startzeit altersabhängig festlegen
+        if (age < 7) {
+            maxTimePerTask = 16;
+        } else if (age < 9) {
+            maxTimePerTask = 13;
+        } else {
+            maxTimePerTask = 11;
+        }
+
         showScreen('screen-menu');
     }
 
@@ -206,6 +260,7 @@
     }
 
     function showMenu() {
+        clearInterval(timerInterval);
         showScreen('screen-menu');
     }
 
@@ -218,9 +273,9 @@
         nextTask();
     }
 
+    // Generator für progressive Schwierigkeitsgrade
     function generateTask() {
         let a, b, result;
-        
         if (currentOp === 'addition') {
             if (level === 1) { a = rand(1, 5); b = rand(1, 5); }
             else if (level === 2) { a = rand(1, 9); b = rand(1, 9); }
@@ -257,13 +312,86 @@
     }
 
     function nextTask() {
+        clearInterval(timerInterval);
         currentTask = generateTask();
         document.getElementById('lbl-task').innerText = currentTask.text;
         document.getElementById('lbl-level').innerText = level;
+        
         const input = document.getElementById('answer-input');
         input.value = '';
         input.focus();
+
+        document.getElementById('lbl-feedback').innerText = '';
+
+        // Timer starten (Zeit verkürzt sich leicht mit höherem Level, min. 6 Sekunden)
+        let currentLevelTime = Math.max(6, maxTimePerTask - (level - 1));
+        timeLeft = currentLevelTime;
         startTime = Date.now();
+
+        updateTimerBar(currentLevelTime, currentLevelTime);
+
+        timerInterval = setInterval(() => {
+            let elapsed = (Date.now() - startTime) / 1000;
+            timeLeft = currentLevelTime - elapsed;
+
+            if (timeLeft <= 0) {
+                clearInterval(timerInterval);
+                handleTimeOut();
+            } else {
+                updateTimerBar(timeLeft, currentLevelTime);
+            }
+        }, 50);
+    }
+
+    function updateTimerBar(current, max) {
+        const bar = document.getElementById('timer-bar');
+        let percentage = (current / max) * 100;
+        bar.style.width = percentage + '%';
+
+        // Letzte 10% der Zeit auf Rot schalten
+        if (percentage <= 10) {
+            bar.classList.add('danger');
+        } else {
+            bar.classList.remove('danger');
+        }
+    }
+
+    // Akustische Hupe über Web Audio API erzeugen
+    function playHornSound() {
+        try {
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(130, audioCtx.currentTime);
+            osc.frequency.setValueAtTime(110, audioCtx.currentTime + 0.15);
+
+            gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
+
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.4);
+        } catch (e) {
+            console.log('Audio konnte nicht abgespielt werden', e);
+        }
+    }
+
+    function handleTimeOut() {
+        playHornSound();
+        const feedback = document.getElementById('lbl-feedback');
+        feedback.className = 'feedback error';
+        feedback.innerText = `⏱️ Zeit abgelaufen! Stufe wird gesenkt.`;
+
+        // Bei Zeitablauf Stufe verringern (mindestens Stufe 1)
+        if (level > 1) {
+            level--;
+        }
+
+        setTimeout(nextTask, 1400);
     }
 
     document.getElementById('answer-input').addEventListener('keydown', function(event) {
@@ -279,10 +407,12 @@
 
         if (isNaN(userVal)) return;
 
+        // Timer stoppen
+        clearInterval(timerInterval);
         const duration = (Date.now() - startTime) / 1000;
 
         if (userVal === currentTask.answer) {
-            let points = Math.max(5, Math.round(25 - (duration * 5)));
+            let points = Math.max(5, Math.round(timeLeft * 3));
             score += points;
             document.getElementById('lbl-score').innerText = score;
 
@@ -293,15 +423,20 @@
                 level++;
             }
 
-            setTimeout(nextTask, 600);
+            setTimeout(nextTask, 800);
         } else {
+            playHornSound();
             feedback.className = 'feedback error';
             feedback.innerText = `Falsch! Richtig wäre ${currentTask.answer} gewesen.`;
-            setTimeout(nextTask, 1000);
+            
+            if (level > 1) level--;
+
+            setTimeout(nextTask, 1400);
         }
     }
 
     function endGame() {
+        clearInterval(timerInterval);
         if (score > (activeProfile.highscore || 0)) {
             activeProfile.highscore = score;
             saveProfiles();
@@ -311,6 +446,7 @@
         showScreen('screen-result');
     }
 
+    // Initiale Ansicht laden
     renderProfiles();
 </script>
 
