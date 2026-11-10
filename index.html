@@ -1,3 +1,8 @@
+Hier ist der vollständige und aktualisierte Code deiner `index.html`.
+
+Ich habe einen **„App installieren“**-Button auf dem Startbildschirm ergänzt. Wenn man darauf klickt, öffnet sich ein übersichtliches Info-Fenster, das die Installation für alle drei Plattformen (**Android, iOS/iPhone und PC**) Schritt für Schritt erklärt und – falls vom Browser unterstützt (Android/PC) – direkt die automatische Installation startet.
+
+```html
 <!DOCTYPE html>
 <html lang="de">
 <head>
@@ -90,6 +95,21 @@
         }
         .edit-btn:hover { color: var(--primary); }
 
+        /* Installations-Modal / Box */
+        .install-box {
+            background-color: #eff6ff;
+            border: 1px solid #bfdbfe;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+            text-align: left;
+            font-size: 0.9rem;
+            color: #1e3a8a;
+        }
+        .install-box h3 { margin-top: 0; font-size: 1rem; color: #1d4ed8; }
+        .install-box ul { padding-left: 20px; margin: 5px 0; }
+        .install-box li { margin-bottom: 6px; }
+
         .stats {
             display: flex;
             justify-content: space-between;
@@ -144,6 +164,27 @@
         <input type="number" id="new-profile-year" placeholder="Geburtsjahr (z.B. 2017)..." autocomplete="off">
         
         <button id="btn-save-profile" onclick="addProfile()">Profil hinzufügen</button>
+        
+        <!-- Installations-Button & Info -->
+        <button id="btn-install" style="background-color: #059669;" onclick="toggleInstallInfo()">📲 App auf Gerät installieren</button>
+        
+        <div id="install-instructions" class="install-box hidden">
+            <h3>Anleitung zur Installation:</h3>
+            <p><b>🤖 Android (Chrome / Samsung Internet):</b></p>
+            <ul>
+                <li>Tippe oben rechts auf die drei Punkte (Menü).</li>
+                <li>Wähle <b>„App installieren“</b> oder <b>„Zum Startbildschirm hinzufügen“</b>.</li>
+            </ul>
+            <p><b>🍏 iPhone / iPad (Safari):</b></p>
+            <ul>
+                <li>Tippe unten auf das <b>Teilen-Symbol</b> (Quadrat mit Pfeil nach oben).</li>
+                <li>Scrolle nach unten und wähle <b>„Zum Home-Bildschirm“</b>.</li>
+            </ul>
+            <p><b>💻 PC / Laptop (Chrome / Edge):</b></p>
+            <ul>
+                <li>Klicke ganz rechts in der Adressleiste auf das Installations-Symbol (<span style="font-size:1.1rem;">💻➕</span>) oder öffne das Browser-Menü und wähle <b>„App installieren“</b>.</li>
+            </ul>
+        </div>
     </div>
 
     <!-- HAUPTMENU -->
@@ -191,15 +232,39 @@
         });
     }
 
+    // Installations-Prompt abfangen (Android / Desktop)
+    let deferredPrompt;
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredPrompt = e;
+    });
+
+    function toggleInstallInfo() {
+        const box = document.getElementById('install-instructions');
+        
+        // Wenn der Browser ein automatisches Installieren unterstützt, direkt auslösen:
+        if (deferredPrompt) {
+            deferredPrompt.prompt();
+            deferredPrompt.userChoice.then((choiceResult) => {
+                if (choiceResult.outcome === 'accepted') {
+                    console.log('Benutzer hat die PWA installiert');
+                }
+                deferredPrompt = null;
+            });
+        } else {
+            // Ansonsten Anleitung ein-/ausblenden
+            box.classList.toggle('hidden');
+        }
+    }
+
     let profiles = JSON.parse(localStorage.getItem('math_profiles')) || [];
     let activeProfile = null;
-    let editingIndex = null; // Hält den Index fest, falls ein Profil bearbeitet wird
+    let editingIndex = null;
     let currentOp = '';
     let level = 1;
     let score = 0;
     let currentTask = {};
     
-    // Timer Variablen
     let timerInterval = null;
     let maxTimePerTask = 12;
     let timeLeft = 12;
@@ -223,13 +288,11 @@
             const currentYear = new Date().getFullYear();
             let calculatedAge = currentYear - p.birthYear;
             
-            // Linker Bereich zum Auswählen und Spielen
             let infoDiv = document.createElement('div');
             infoDiv.className = 'profile-info';
             infoDiv.innerHTML = `👤 <b>${p.name}</b> (${calculatedAge} J.) <br><span style="font-size:0.85rem; color:#4b5563;">Highscore: ${p.highscore || 0}</span>`;
             infoDiv.onclick = () => selectProfile(index);
 
-            // Rechter Bereich: Bearbeiten-Button
             let editBtn = document.createElement('button');
             editBtn.className = 'edit-btn';
             editBtn.innerHTML = '✏️';
@@ -256,13 +319,11 @@
         if (!name || isNaN(birthYear)) return;
 
         if (editingIndex !== null) {
-            // Bestehendes Profil aktualisieren (Highscore und evtl. andere Daten behalten)
             profiles[editingIndex].name = name;
             profiles[editingIndex].birthYear = birthYear;
             editingIndex = null;
             saveBtn.innerText = 'Profil hinzufügen';
         } else {
-            // Neues Profil anlegen
             profiles.push({ name: name, birthYear: birthYear, highscore: 0 });
         }
 
@@ -504,3 +565,5 @@
 
 </body>
 </html>
+
+```
