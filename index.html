@@ -78,7 +78,12 @@
             flex-grow: 1;
         }
         .profile-info:hover { opacity: 0.8; }
-        .edit-btn {
+        
+        .profile-actions {
+            display: flex;
+            gap: 5px;
+        }
+        .action-btn {
             background: none;
             border: none;
             font-size: 1.2rem;
@@ -88,7 +93,8 @@
             width: auto;
             color: #4b5563;
         }
-        .edit-btn:hover { color: var(--primary); }
+        .action-btn:hover { color: var(--primary); }
+        .delete-btn:hover { color: var(--error) !important; }
 
         /* Installations-Modal / Box */
         .install-box {
@@ -177,7 +183,8 @@
             </ul>
             <p><b>💻 PC / Laptop (Chrome / Edge):</b></p>
             <ul>
-                <li>Klicke ganz rechts in der Adressleiste auf das Installations-Symbol (<span style="font-size:1.1rem;">💻➕</span>) oder öffne das Browser-Menü und wähle <b>„App installieren“</b>.</li>
+                <li>Klicke oben rechts im Browser auf die drei Punkte <b>(...)</b>.</li>
+                <li>Wähle <b>„Apps“</b> und dann <b>„App installieren“</b> (oder „Diese Website als App installieren“).</li>
             </ul>
         </div>
     </div>
@@ -236,8 +243,6 @@
 
     function toggleInstallInfo() {
         const box = document.getElementById('install-instructions');
-        
-        // Wenn der Browser ein automatisches Installieren unterstützt, direkt auslösen:
         if (deferredPrompt) {
             deferredPrompt.prompt();
             deferredPrompt.userChoice.then((choiceResult) => {
@@ -247,7 +252,6 @@
                 deferredPrompt = null;
             });
         } else {
-            // Ansonsten Anleitung ein-/ausblenden
             box.classList.toggle('hidden');
         }
     }
@@ -283,13 +287,18 @@
             const currentYear = new Date().getFullYear();
             let calculatedAge = currentYear - p.birthYear;
             
+            // Linker Bereich zum Auswählen
             let infoDiv = document.createElement('div');
             infoDiv.className = 'profile-info';
             infoDiv.innerHTML = `👤 <b>${p.name}</b> (${calculatedAge} J.) <br><span style="font-size:0.85rem; color:#4b5563;">Highscore: ${p.highscore || 0}</span>`;
             infoDiv.onclick = () => selectProfile(index);
 
+            // Rechter Bereich: Aktions-Buttons (Bearbeiten & Löschen)
+            let actionsDiv = document.createElement('div');
+            actionsDiv.className = 'profile-actions';
+
             let editBtn = document.createElement('button');
-            editBtn.className = 'edit-btn';
+            editBtn.className = 'action-btn';
             editBtn.innerHTML = '✏️';
             editBtn.title = 'Profil bearbeiten';
             editBtn.onclick = (e) => {
@@ -297,8 +306,20 @@
                 editProfile(index);
             };
 
+            let deleteBtn = document.createElement('button');
+            deleteBtn.className = 'action-btn delete-btn';
+            deleteBtn.innerHTML = '🗑️';
+            deleteBtn.title = 'Profil löschen';
+            deleteBtn.onclick = (e) => {
+                e.stopPropagation();
+                deleteProfile(index);
+            };
+
+            actionsDiv.appendChild(editBtn);
+            actionsDiv.appendChild(deleteBtn);
+
             card.appendChild(infoDiv);
-            card.appendChild(editBtn);
+            card.appendChild(actionsDiv);
             list.appendChild(card);
         });
     }
@@ -337,6 +358,24 @@
         editingIndex = index;
         document.getElementById('btn-save-profile').innerText = 'Profil speichern';
         document.getElementById('new-profile-name').focus();
+    }
+
+    function deleteProfile(index) {
+        const p = profiles[index];
+        if (confirm(`Möchtest du das Profil von "${p.name}" wirklich unwiderruflich löschen?`)) {
+            profiles.splice(index, 1);
+            saveProfiles();
+            
+            // Falls man gerade im Bearbeitungsmodus war für dieses Profil, diesen zurücksetzen
+            if (editingIndex === index) {
+                editingIndex = null;
+                document.getElementById('btn-save-profile').innerText = 'Profil hinzufügen';
+                document.getElementById('new-profile-name').value = '';
+                document.getElementById('new-profile-year').value = '';
+            }
+            
+            renderProfiles();
+        }
     }
 
     function selectProfile(index) {
@@ -560,5 +599,3 @@
 
 </body>
 </html>
-
-```
